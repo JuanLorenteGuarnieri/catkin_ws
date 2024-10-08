@@ -1,0 +1,68 @@
+# Compiled Object files
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+
+# Static Libraries
+*.lib
+*.a
+
+# Dynamic Libraries
+*.dll
+*.so
+*.dylib
+
+# Executables
+*.exe
+*.out
+
+# ROS build files
+/build/
+.devel/
+devel/
+/devel/
+install/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# IDE specific files
+# Visual Studio
+.vs/
+*.sln
+*.user
+
+# Eclipse
+.settings/
+*.project
+*.cproject
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# Backup files
+*~ 
+*.bak
+
+# Log files
+/logs
+*.log
+
+# Environment files
+.env
+
+/.vscode
+/.catkin_tools
+.vscode
+.catkin_tools
+.catkin_workspace 

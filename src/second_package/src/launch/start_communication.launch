@@ -1,0 +1,7 @@
+<launch>
+  <!-- Run the node talker -->
+  <node name="publisher_node" pkg="second_package" type="talker" output="screen"/>
+
+  <!-- Run the node listener -->
+  <node name="subscriber_node" pkg="second_package" type="listener" output="screen"/>
+</launch>

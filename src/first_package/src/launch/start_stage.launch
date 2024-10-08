@@ -1,0 +1,10 @@
+<launch>
+  <!-- Iniciar el simulador Stage con el archivo simple.world -->
+  <node pkg="stage_ros" type="stageros" name="stage" args="$(find first_package)/world/simple.world"/>
+
+  <!-- Nodo para controlar el robot con el teclado -->
+  <node pkg="teleop_twist_keyboard_cpp" type="teleop_twist_keyboard" name="teleop_keyboard" output="screen">
+    <param name="scale_linear" value="1.0"/>
+    <param name="scale_angular" value="1.0"/>
+  </node>
+</launch>
