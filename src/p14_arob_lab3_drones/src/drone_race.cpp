@@ -9,7 +9,7 @@ DroneRace::DroneRace(ros::NodeHandle nh) : nh_(nh)
     if (!nh_.getParam("targets_file_path", targets_file_path_))
     {
         ROS_WARN("There is no 'targets_file_path' parameter. Using default value.");
-        targets_file_path_ = "/home/arob/catkin_ws/src/p00_arob_lab3_drones/data/gates.txt";
+        targets_file_path_ = "/home/qassiel/catkin_ws/src/p14_arob_lab3_drones/data/gates.txt";
     }
     // Try to open the targets file.
     if (!readGates_(targets_file_path_))
@@ -38,7 +38,8 @@ DroneRace::DroneRace(ros::NodeHandle nh) : nh_(nh)
     sleeptime.sleep(); // Sleep for a moment before trying to draw
 
     drawGates_();
-    generateTrajectoryExample_();
+    // generateTrajectoryExample_();
+    generateTrajectory_();
 
     cmd_timer_ = nh_.createTimer(ros::Duration(0.01), &DroneRace::commandTimerCallback_, this);
     ROS_INFO("DroneRace initialized");
@@ -84,50 +85,130 @@ void DroneRace::commandTimerCallback_(const ros::TimerEvent& event) {
 }
 
 void DroneRace::generateTrajectory_() {
-    //constants
-    const int dimension = 3; //we only compute the trajectory in x, y and z
-    const int derivative_to_optimize = mav_trajectory_generation::derivative_order::SNAP; //POSITION, VELOCITY, ACCELERATION, JERK, SNAP
-    const float vel_gate_mod = 1.0; // desired velocity to cross the gate. Adjust for max performance
+    // Set the dimension and derivative to optimize
+    const int dimension = 3; // x, y, z
+    const int derivative_to_optimize = mav_trajectory_generation::derivative_order::SNAP; // Minimize snap for smooth flight
 
+    // Initialize vertices to store waypoints
     mav_trajectory_generation::Vertex::Vector vertices;
-    // INCLUDE YOUR CODE HERE
 
-    // Provide the time constraints on the vertices
+    // Add starting point (current drone position) as the first vertex
+    mav_trajectory_generation::Vertex start(dimension);
+    start.makeStartOrEnd(Eigen::Vector3d(0.0, 0.0, 0.0), 
+                         derivative_to_optimize);
+    vertices.push_back(start);
+
+    // Add the gate positions as intermediate vertices
+    for (size_t i = 0; i < gates_.size(); ++i) {
+        geometry_msgs::Pose gate_pose = gates_[i];
+        mav_trajectory_generation::Vertex middle(dimension);
+
+        // Set the position constraint at the gate
+        middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, 
+                             Eigen::Vector3d(gate_pose.position.x, gate_pose.position.y, gate_pose.position.z));
+
+        // Calcular el vector de orientación de la puerta
+        Eigen::Quaterniond orientation(gate_pose.orientation.w, 
+                                       gate_pose.orientation.x, 
+                                       gate_pose.orientation.y, 
+                                       gate_pose.orientation.z);
+        
+        // Definir el vector de dirección perpendicular a la orientación de la puerta
+        // Asumimos que la puerta está alineada con el eje Z en su propia referencia
+        Eigen::Vector3d perpendicular_direction = orientation * Eigen::Vector3d(1, 0, 0); // Cambia a (0, 0, 1) si es necesario
+
+        // Agregar la restricción de velocidad en la dirección perpendicular
+        double desired_velocity_magnitude = 2.0; // Ajusta según sea necesario
+        middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, 
+                             perpendicular_direction.normalized() * desired_velocity_magnitude);
+        
+        vertices.push_back(middle);
+    }
+
+    // Add final position (last gate) as the end vertex
+    mav_trajectory_generation::Vertex end(dimension);
+    end.makeStartOrEnd(Eigen::Vector3d(0.0, 0.0, 0.0), 
+                         derivative_to_optimize);
+    vertices.push_back(end);
+
+
+    // Provide time constraints for each segment
     std::vector<double> segment_times;
-    // INCLUDE YOUR CODE HERE
+    const double v_max = 2.0;  // Max velocity in m/s
+    const double a_max = 2.0;  // Max acceleration in m/s^2
+    segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max, a_max);
     
-    // Solve the optimization problem
-    const int N = 10; //Degree of the polynomial, even number at least two times the highest derivative
+    for (size_t i = 0; i < segment_times.size(); ++i) {
+        if (segment_times[i] <= 0.0) {
+            ROS_WARN("Segment time at index %lu is zero or negative, adjusting to a small positive value. Time: %f", i, segment_times[i]);
+            segment_times[i] = 0.9;  // Adjust to a small positive value if needed
+        } else {
+            ROS_INFO("Segment time at index %lu: %f", i, segment_times[i]);
+        }
+    }
+
+    // Solve the trajectory optimization problem
+    const int N = 10;  // Degree of the polynomial (must be even, and at least 2x the highest derivative to optimize)
     mav_trajectory_generation::PolynomialOptimization<N> opt(dimension);
     opt.setupFromVertices(vertices, segment_times, derivative_to_optimize);
     opt.solveLinear();
 
-    //Obtain the trajectory
+    // Obtain the trajectory
     trajectory_.clear();
     opt.getTrajectory(&trajectory_);
 
-    //Sample the trajectory (to obtain positions, velocities, etc.)
+    // Sample the trajectory (to obtain positions, velocities, etc.)
     mav_msgs::EigenTrajectoryPoint::Vector states;
-    double sampling_interval = 0.01; //How much time between intermediate points
+    double sampling_interval = 0.01;  // Time between trajectory points
     bool success = mav_trajectory_generation::sampleWholeTrajectory(trajectory_, sampling_interval, &states);
-    // Example to access the data
-    cout << "Trajectory time = " << trajectory_.getMaxTime() << endl;
-    cout << "Number of states = " << states.size() << endl;
-    cout << "Position (world frame) " << 3 << " X = " << states[2].position_W[0] << endl;
-    cout << "Velocity (world frame) " << 3 << " X = " << states[2].velocity_W[0] << endl;
+    
+    if (!success) {
+        ROS_ERROR("Failed to sample trajectory");
+        return;
+    }
 
-    // Default Visualization
+    // Example of accessing trajectory data (optional)
+    ROS_INFO("Trajectory total time: %f seconds", trajectory_.getMaxTime());
+    ROS_INFO("Total number of states: %lu", states.size());
+    ROS_INFO("Position at third state: X = %f, Y = %f, Z = %f", 
+              states[2].position_W[0], states[2].position_W[1], states[2].position_W[2]);
+
+    // Visualization markers
     visualization_msgs::MarkerArray markers;
-    double distance = 0.5; // Distance by which to seperate additional markers. Set 0.0 to disable.
+    double distance_between_markers = 0.5;  // Distance between trajectory markers
     std::string frame_id = "world";
-    mav_trajectory_generation::drawMavTrajectory(trajectory_, distance, frame_id, &markers);
+    mav_trajectory_generation::drawMavTrajectory(trajectory_, distance_between_markers, frame_id, &markers);
     pub_traj_vectors_.publish(markers);
 
-    //AROB visualization
+    // Visualize trajectory using custom markers
     drawTrajectoryMarkers_();
 
-    // Generate list of commands to publish to the drone
-    // INCLUDE YOUR CODE HERE
+    // Generate the list of commands to publish to the drone (optional)
+    // Here you can prepare the commands based on the sampled trajectory points
+    // for controlling the drone in real time using either /cmd_vel or /command/pose topics.
+    // INCLUDE YOUR CODE HERE FOR DRONE CONTROL
+    for (size_t i = 0; i < states.size(); ++i) {
+        geometry_msgs::PoseStamped pose_msg;
+
+        // Fill in the position
+        pose_msg.header.stamp = ros::Time::now();
+        pose_msg.header.frame_id = "world";
+        pose_msg.pose.position.x = states[i].position_W[0];
+        pose_msg.pose.position.y = states[i].position_W[1];
+        pose_msg.pose.position.z = states[i].position_W[2];
+
+        // Fill in the orientation (quaternion)
+        pose_msg.pose.orientation.x = states[i].orientation_W_B.x();
+        pose_msg.pose.orientation.y = states[i].orientation_W_B.y();
+        pose_msg.pose.orientation.z = states[i].orientation_W_B.z();
+        pose_msg.pose.orientation.w = states[i].orientation_W_B.w();
+
+        // Publish the pose command
+        pub_goal_.publish(pose_msg);
+
+        // Sleep for the sampling interval to simulate real-time control
+        ros::Duration(sampling_interval).sleep();
+    }
 }
 
 void DroneRace::generateTrajectoryExample_() {
@@ -233,15 +314,15 @@ void DroneRace::drawGateMarkers_(geometry_msgs::Pose gate, int &id){
 
     marker.header.frame_id = "world";  // Change this frame_id according to your setup
     marker.header.stamp = ros::Time::now();
-    marker.type = visualization_msgs::Marker::CUBE;
+    marker.type = visualization_msgs::Marker::SPHERE;
     marker.action = visualization_msgs::Marker::ADD;
     marker.ns = "corner";
-    marker.scale.x = 0.2;
-    marker.scale.y = 0.2;
-    marker.scale.z = 0.2;
+    marker.scale.x = 0.25;
+    marker.scale.y = 0.25;
+    marker.scale.z = 0.25;
     marker.color.a = 1.0;
     marker.color.r = 1.0;
-    marker.color.g = 0.0;
+    marker.color.g = 1.0;
     marker.color.b = 0.0;
     marker.pose.orientation.w = 1.0;
     marker.lifetime = ros::Duration();
