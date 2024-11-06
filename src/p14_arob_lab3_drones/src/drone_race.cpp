@@ -322,7 +322,7 @@ void DroneRace::drawGateMarkers_(geometry_msgs::Pose gate, int &id){
     marker.scale.z = 0.25;
     marker.color.a = 1.0;
     marker.color.r = 1.0;
-    marker.color.g = 1.0;
+    marker.color.g = 0.0;
     marker.color.b = 0.0;
     marker.pose.orientation.w = 1.0;
     marker.lifetime = ros::Duration();
@@ -356,6 +356,10 @@ void DroneRace::drawGateMarkers_(geometry_msgs::Pose gate, int &id){
     line_marker.points.push_back(marker.pose.position);
     marker_array.markers.push_back(marker);
 
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+
     move_gate << 0.0, -gate_size, gate_size;
     Eigen::Matrix<double, 3, 1> position = pos_gate + rotate_gate * move_gate;
     marker.pose.position.x = position(0);
@@ -364,6 +368,10 @@ void DroneRace::drawGateMarkers_(geometry_msgs::Pose gate, int &id){
     marker.id = id + 2;
     line_marker.points.push_back(marker.pose.position);
     marker_array.markers.push_back(marker);
+    
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
 
     move_gate << 0.0, -gate_size, -gate_size;
     position = pos_gate + rotate_gate * move_gate;
@@ -373,6 +381,10 @@ void DroneRace::drawGateMarkers_(geometry_msgs::Pose gate, int &id){
     marker.id = id + 3;
     line_marker.points.push_back(marker.pose.position);
     marker_array.markers.push_back(marker);
+
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
 
     move_gate << 0.0, gate_size, -gate_size;
     position = pos_gate + rotate_gate * move_gate;
