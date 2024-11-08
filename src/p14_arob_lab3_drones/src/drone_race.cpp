@@ -74,7 +74,10 @@ bool DroneRace::readGates_(string file_name) {
     input_file.close();
     return true;
 }
-
+/**
+ * FIXME: 
+ * TODO:
+ */
 void DroneRace::commandTimerCallback_(const ros::TimerEvent& event) {
     // INCLUDE YOUR CODE TO PUBLISH THE COMMANDS TO THE DRONE
     // You should allow two control modes: one using the /cmd_vel topic
@@ -82,14 +85,76 @@ void DroneRace::commandTimerCallback_(const ros::TimerEvent& event) {
     // should be controlled with the "is_control_pose_" variable.
     // Remember to remove the /controller/pose for controlling with the
     // /cmd_vel.
+    if (states.empty()) {
+        ROS_WARN("No trajectory available to follow.");
+        return;
+    }
+
+    if (current_state_idx_ >= states.size()) {
+        ROS_INFO("Trajectory complete. Stopping drone.");
+        // Stop the drone if trajectory is complete
+        if (is_control_pose_) {
+            // Publish a final pose message at the last position
+            geometry_msgs::PoseStamped final_pose_msg;
+            final_pose_msg.header.stamp = ros::Time::now();
+            final_pose_msg.header.frame_id = "world";
+            final_pose_msg.pose.position.x = states.back().position_W[0];
+            final_pose_msg.pose.position.y = states.back().position_W[1];
+            final_pose_msg.pose.position.z = states.back().position_W[2];
+            final_pose_msg.pose.orientation.x = states.back().orientation_W_B.x();
+            final_pose_msg.pose.orientation.y = states.back().orientation_W_B.y();
+            final_pose_msg.pose.orientation.z = states.back().orientation_W_B.z();
+            final_pose_msg.pose.orientation.w = states.back().orientation_W_B.w();
+            pub_goal_.publish(final_pose_msg);
+        } else {
+            // Publish a zero velocity command to stop the drone
+            geometry_msgs::Twist stop_msg;
+            stop_msg.linear.x = 0.0;
+            stop_msg.linear.y = 0.0;
+            stop_msg.linear.z = 0.0;
+            stop_msg.angular.x = 0.0;
+            stop_msg.angular.y = 0.0;
+            stop_msg.angular.z = 0.0;
+            pub_cmd_vel_.publish(stop_msg);
+        }
+        return;
+    }
+
+    // Publish commands based on control mode
+    if (is_control_pose_) {
+        // Position control mode: publish PoseStamped
+        geometry_msgs::PoseStamped pose_msg;
+        pose_msg.header.stamp = ros::Time::now();
+        pose_msg.header.frame_id = "world";
+        pose_msg.pose.position.x = states[current_state_idx_].position_W[0];
+        pose_msg.pose.position.y = states[current_state_idx_].position_W[1];
+        pose_msg.pose.position.z = states[current_state_idx_].position_W[2];
+        pose_msg.pose.orientation.x = states[current_state_idx_].orientation_W_B.x();
+        pose_msg.pose.orientation.y = states[current_state_idx_].orientation_W_B.y();
+        pose_msg.pose.orientation.z = states[current_state_idx_].orientation_W_B.z();
+        pose_msg.pose.orientation.w = states[current_state_idx_].orientation_W_B.w();
+        pub_goal_.publish(pose_msg);
+    } else {
+        // Velocity control mode: publish Twist
+        geometry_msgs::Twist cmd_vel_msg;
+        cmd_vel_msg.linear.x = states[current_state_idx_].velocity_W[0];
+        cmd_vel_msg.linear.y = states[current_state_idx_].velocity_W[1];
+        cmd_vel_msg.linear.z = states[current_state_idx_].velocity_W[2];
+        cmd_vel_msg.angular.x = 0.0;  // No roll
+        cmd_vel_msg.angular.y = 0.0;  // No pitch
+        cmd_vel_msg.angular.z = 0.0;  // No yaw control, assuming velocity-only control
+        pub_cmd_vel_.publish(cmd_vel_msg);
+    }
+
+    // Move to the next state in the trajectory
+    current_state_idx_++;
+
 }
 
 void DroneRace::generateTrajectory_() {
-    // Set the dimension and derivative to optimize
     const int dimension = 3; // x, y, z
     const int derivative_to_optimize = mav_trajectory_generation::derivative_order::SNAP; // Minimize snap for smooth flight
 
-    // Initialize vertices to store waypoints
     mav_trajectory_generation::Vertex::Vector vertices;
 
     // Add starting point (current drone position) as the first vertex
@@ -107,18 +172,18 @@ void DroneRace::generateTrajectory_() {
         middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, 
                              Eigen::Vector3d(gate_pose.position.x, gate_pose.position.y, gate_pose.position.z));
 
-        // Calcular el vector de orientación de la puerta
+        / Calculate the door orientation vector
         Eigen::Quaterniond orientation(gate_pose.orientation.w, 
                                        gate_pose.orientation.x, 
                                        gate_pose.orientation.y, 
                                        gate_pose.orientation.z);
         
-        // Definir el vector de dirección perpendicular a la orientación de la puerta
-        // Asumimos que la puerta está alineada con el eje Z en su propia referencia
-        Eigen::Vector3d perpendicular_direction = orientation * Eigen::Vector3d(1, 0, 0); // Cambia a (0, 0, 1) si es necesario
+        // Define the direction vector perpendicular to the orientation of the gate.
+        // Assume that the door is aligned with the Z-axis at its own reference.
+        Eigen::Vector3d perpendicular_direction = orientation * Eigen::Vector3d(1, 0, 0);
 
-        // Agregar la restricción de velocidad en la dirección perpendicular
-        double desired_velocity_magnitude = 2.0; // Ajusta según sea necesario
+        // Add velocity constrain
+        double desired_velocity_magnitude = 2.0;
         middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, 
                              perpendicular_direction.normalized() * desired_velocity_magnitude);
         
@@ -141,7 +206,7 @@ void DroneRace::generateTrajectory_() {
     for (size_t i = 0; i < segment_times.size(); ++i) {
         if (segment_times[i] <= 0.0) {
             ROS_WARN("Segment time at index %lu is zero or negative, adjusting to a small positive value. Time: %f", i, segment_times[i]);
-            segment_times[i] = 0.9;  // Adjust to a small positive value if needed
+            segment_times[i] = 0.9; 
         } else {
             ROS_INFO("Segment time at index %lu: %f", i, segment_times[i]);
         }
@@ -167,7 +232,6 @@ void DroneRace::generateTrajectory_() {
         return;
     }
 
-    // Example of accessing trajectory data (optional)
     ROS_INFO("Trajectory total time: %f seconds", trajectory_.getMaxTime());
     ROS_INFO("Total number of states: %lu", states.size());
     ROS_INFO("Position at third state: X = %f, Y = %f, Z = %f", 
