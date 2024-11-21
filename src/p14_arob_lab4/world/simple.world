@@ -87,6 +87,10 @@ floorplan
 erratic( pose [ -6 -6 0 0 ] name "Audrie" color "blue")
 block( pose [ 4 4 0 0 ] name "obstacle" color "red")
 block( pose [ 4 4 0 0 ] name "obstacle" color "red")
+
+# block( pose [ 4 4 0 0 ] name "dynamic_obstacle_1" color "red" motion "sine" period 2 amplitude 2 )
+# block( pose [ 2 2 0 0 ] name "dynamic_obstacle_2" color "yellow" motion "linear" velocity [0.5 -0.5 0] )
+
 #target( pose [ -1 5 0 0 ] color "yellow")
 target( pose [ -3 0 0 0 ] color "yellow")
 #target( pose [ 4 -1 0 0 ] color "yellow")
