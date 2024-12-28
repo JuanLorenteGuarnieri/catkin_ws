@@ -88,22 +88,23 @@ bool AStarPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geome
 
     std::vector<int> point_start{(int)start_mx,(int)start_my};
     std::vector<int> point_goal{(int)goal_mx,(int)goal_my};    
-  	std::vector<std::vector<int>> solA;
-    bool computed = computeAStar(point_start, point_goal, solA
-    );
-    if (computed){        
-        getPlan(solA, plan);
-        // add goal
-        plan.push_back(goal);
-    }else{
-        ROS_WARN("No plan computed");
+
+    std::vector<std::vector<int>> solAStar;
+    bool computed = computeAStar(point_start, point_goal, solAStar);
+    
+    if (computed) {
+        getPlan(solAStar, plan);
+        plan.push_back(goal);  // Agregar el objetivo al final
+    } else {
+        ROS_WARN("No plan computed.");
     }
 
     return computed;
 }
 
 double AStarPlanner::heuristic(const std::vector<int>& a, const std::vector<int>& b) {
-    return std::hypot(b[0] - a[0], b[1] - a[1]);
+    double result = distance(a[0], a[1], b[0], b[1]);
+    return result;
 }
 
 std::vector<std::vector<int>> AStarPlanner::getNeighbors(const std::vector<int>& node) {
@@ -124,143 +125,87 @@ std::vector<std::vector<int>> AStarPlanner::getNeighbors(const std::vector<int>&
 bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector<int>& goal, 
                                std::vector<std::vector<int>>& sol) {
     // Initialize cost maps
-    std::unordered_map<std::vector<int>, double, hash_vector> g, f;
-    std::unordered_map<std::vector<int>, std::vector<int>, hash_vector> parent;
+    using Node = std::vector<int>;
+    bool verbose = true;
 
-    // Set initial costs
-    g[start] = 0;
-    f[start] = heuristic(start, goal);
+    auto compare = [](const std::pair<Node, double>& a, const std::pair<Node, double>& b) {
+        return a.second > b.second;
+    };
 
-    // Priority queue for nodes to explore
-    std::priority_queue<std::pair<double, std::vector<int>>, 
-                        std::vector<std::pair<double, std::vector<int>>>, 
-                        std::greater<>> open_set;
+    std::priority_queue<std::pair<Node, double>, std::vector<std::pair<Node, double>>, decltype(compare)> open_set(compare);
+    open_set.emplace(start, heuristic(start, goal));
 
-    open_set.emplace(f[start], start);
-    std::unordered_set<std::vector<int>, hash_vector> visited;
+    std::unordered_map<Node, Node, hash_vector> came_from;
+    std::unordered_map<Node, double, hash_vector> g_score;
+    std::unordered_map<Node, double, hash_vector> f_score;
+    g_score[start] = 0;
+    f_score[start] = heuristic(start, goal);
+
+    if (verbose){
+        ROS_INFO("A* Algorithm Starting...");
+        ROS_INFO("Start Node: [%d, %d]", start[0], start[1]);
+        ROS_INFO("Goal Node: [%d, %d]", goal[0], goal[1]);
+    }
+
 
     while (!open_set.empty()) {
-        // Get the node with the smallest f(x) value
-        auto [current_cost, current] = open_set.top();
+        Node current = open_set.top().first;
         open_set.pop();
+        if (verbose){
+            ROS_INFO("Current Node: [%d, %d]", current[0], current[1]);
+        }
 
-        // Goal reached
         if (current == goal) {
-            sol.clear();
-            for (auto node = goal; node != start; node = parent[node]) {
-                sol.push_back(node);
-            }
-            sol.push_back(start);
-            std::reverse(sol.begin(), sol.end());
+            ROS_INFO("Goal Reached!");
+            reconstructPath(came_from, current, sol);
             return true;
         }
 
-        // Mark current node as visited
-        visited.insert(current);
-
-        // Explore neighbors
         for (const auto& neighbor : getNeighbors(current)) {
-            if (visited.count(neighbor)) continue; // Skip visited nodes
+            if (g_score.find(neighbor) == g_score.end()) {
+                g_score[neighbor] = std::numeric_limits<double>::infinity();
+            }
+            if (f_score.find(neighbor) == f_score.end()) {
+                f_score[neighbor] = std::numeric_limits<double>::infinity();
+            }
 
-            double tentative_g = g[current] + distance(current[0],current[1], neighbor[0], neighbor[1]);
-            if (g.find(neighbor) == g.end() || tentative_g < g[neighbor]) {
-                // Update costs
-                g[neighbor] = tentative_g;
-                f[neighbor] = g[neighbor] + heuristic(neighbor, goal);
-                parent[neighbor] = current;
+            double tentative_g_score = g_score[current] + heuristic(current, neighbor);
+            if (tentative_g_score < g_score[neighbor]) {
+                if (verbose){
+                    ROS_INFO("Updating Neighbor: [%d, %d]", neighbor[0], neighbor[1]);
+                    ROS_INFO("Tentative g_score: %f", tentative_g_score);
+                }
+                
 
-                // Add to open set
-                open_set.emplace(f[neighbor], neighbor);
+                came_from[neighbor] = current;
+                g_score[neighbor] = tentative_g_score;
+                f_score[neighbor] = tentative_g_score + heuristic(neighbor, goal);
+
+                open_set.emplace(neighbor, f_score[neighbor]);
+
+                if (verbose){
+                    ROS_INFO("Neighbor Updated: [%d, %d]", neighbor[0], neighbor[1]);
+                    ROS_INFO("g_score: %f", g_score[neighbor]);
+                    ROS_INFO("f_score: %f", f_score[neighbor]);
+                }
             }
         }
     }
 
-    return false; // No path found
+    return false;
 }
 
-/*
-bool AStarPlanner::computeAStar2(const std::vector<int> start, const std::vector<int> goal, 
-                        std::vector<std::vector<int>>& sol) {
-    // Inicializar estructuras de datos
-    std::priority_queue<std::pair<double, std::vector<int>>, 
-                        std::vector<std::pair<double, std::vector<int>>>, 
-                        std::greater<std::pair<double, std::vector<int>>>> open_set;
-    std::set<std::vector<int>> closed_set;
-    std::map<std::vector<int>, double> g_cost; // Costo acumulado (g(x))
-    std::map<std::vector<int>, double> f_cost; // Costo total (f(x))
-    std::map<std::vector<int>, std::vector<int>> parents; // Para reconstruir el camino
-
-    // Inicializar nodo inicial
-    g_cost[start] = 0.0;
-    f_cost[start] = heuristic(start, goal); // \( f(x) = h(x) \)
-    open_set.push({f_cost[start], start});
-
-    // Marker para visualización
-    visualization_msgs::Marker edge_marker;
-    edge_marker.header.frame_id = "map";
-    edge_marker.header.stamp = ros::Time::now();
-    edge_marker.ns = "a_path";
-    edge_marker.type = visualization_msgs::Marker::LINE_LIST;
-    edge_marker.scale.x = 0.05;
-    edge_marker.color.r = 0.0;
-    edge_marker.color.g = 0.0;
-    edge_marker.color.b = 1.0;
-    edge_marker.color.a = 1.0;
-    edge_marker.points.clear();
-
-    while (!open_set.empty()) {
-        // Seleccionar el nodo con menor \( f(x) \) en el open_set
-        auto current = open_set.top().second;
-        open_set.pop();
-
-        // Si alcanzamos el objetivo, reconstruir la solución
-        if (current == goal) {
-            std::vector<int> node = goal;
-            while (node != start) {
-                sol.push_back(node);
-                node = parents[node];
-            }
-            sol.push_back(start);
-            std::reverse(sol.begin(), sol.end());
-            return true;
-        }
-
-        // Añadir el nodo actual al conjunto cerrado
-        closed_set.insert(current);
-
-        // Expandir vecinos
-        for (auto& neighbor : getNeighbors(current)) {
-            if (closed_set.count(neighbor) > 0 || 
-                costmap_->getCost(neighbor[0], neighbor[1]) == costmap_2d::LETHAL_OBSTACLE) {
-                continue; // Ignorar nodos ya visitados o en obstáculos
-            }
-
-            // Calcular costos
-            double tentative_g = g_cost[current] + distance(current[0], current[1], neighbor[0], neighbor[1]);
-            if (g_cost.find(neighbor) == g_cost.end() || tentative_g < g_cost[neighbor]) {
-                g_cost[neighbor] = tentative_g;
-                f_cost[neighbor] = g_cost[neighbor] + heuristic(neighbor, goal);
-                parents[neighbor] = current;
-
-                // Añadir a open_set
-                open_set.push({f_cost[neighbor], neighbor});
-
-                // Visualización
-                geometry_msgs::Point p1, p2;
-                costmap_->mapToWorld(current[0], current[1], p1.x, p1.y);
-                costmap_->mapToWorld(neighbor[0], neighbor[1], p2.x, p2.y);
-                p1.z = p2.z = 0.0;
-                edge_marker.points.push_back(p1);
-                edge_marker.points.push_back(p2);
-                marker_pub_.publish(edge_marker);
-            }
-        }
+std::vector<std::vector<int>> AStarPlanner::reconstructPath( std::unordered_map<std::vector<int>, std::vector<int>, hash_vector>& cameFrom, std::vector<int>& current,
+    std::vector<std::vector<int>>& sol) {
+    sol.clear();
+    sol.push_back(current);
+    while (cameFrom.find(current) != cameFrom.end()) {
+        current = cameFrom[current];
+        sol.push_back(current);
     }
-
-    return false; 
+    return sol;
 }
 
-*/
 bool AStarPlanner::obstacleFree(const unsigned int x0, const unsigned int y0, 
                             const unsigned int x1, const unsigned int y1){
     //Bresenham algorithm to check if the line between points (x0,y0) - (x1,y1) is free of collision

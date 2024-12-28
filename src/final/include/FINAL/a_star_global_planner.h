@@ -43,6 +43,9 @@ public:
     void initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros);
     bool makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal,
                     std::vector<geometry_msgs::PoseStamped>& plan);
+    bool computeAStar(const std::vector<int>& start, const std::vector<int>& goal, std::vector<std::vector<int>>& sol);
+    void getPlan(const std::vector<std::vector<int>> sol, std::vector<geometry_msgs::PoseStamped>& plan);
+    
 
 private:
     ros::NodeHandle nh_;
@@ -55,15 +58,14 @@ private:
 	bool initialized_;
 
     double max_samples_;
-
     double max_dist_;
     double resolution_;
 
+
     // functions to compute the plan
     bool obstacleFree(const unsigned int x0, const unsigned int y0, const unsigned int x1, const unsigned int y1);
-    bool computeAStar(const std::vector<int>& start, const std::vector<int>& goal, 
-                            std::vector<std::vector<int>>& sol);
-    void getPlan(const std::vector<std::vector<int>> sol, std::vector<geometry_msgs::PoseStamped>& plan);
+    std::vector<std::vector<int>> reconstructPath( std::unordered_map<std::vector<int>, std::vector<int>, hash_vector>& cameFrom, std::vector<int>& current,
+    std::vector<std::vector<int>>& sol);
     double heuristic(const std::vector<int>& a, const std::vector<int>& b);
     std::vector<std::vector<int>> getNeighbors(const std::vector<int>& node);
 };
