@@ -109,15 +109,40 @@ double AStarPlanner::heuristic(const std::vector<int>& a, const std::vector<int>
 
 std::vector<std::vector<int>> AStarPlanner::getNeighbors(const std::vector<int>& node) {
     std::vector<std::vector<int>> neighbors;
-    std::vector<std::vector<int>> directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    bool hayDiagonales = false;
+
+    std::vector<std::pair<int, int>> directions = {
+        {0, 1},  // arriba
+        {0, -1}, // abajo
+        {1, 0},  // derecha
+        {-1, 0}  // izquierda
+    };
+
+    if (hayDiagonales) {
+        directions.insert(directions.end(), {
+            {1, 1},   // diagonal superior derecha
+            {1, -1},  // diagonal inferior derecha
+            {-1, 1},  // diagonal superior izquierda
+            {-1, -1}  // diagonal inferior izquierda
+        });
+    }
+
     for (const auto& dir : directions) {
-        std::vector<int> neighbor = {node[0] + dir[0], node[1] + dir[1]};
-        if (neighbor[0] >= 0 && neighbor[0] < costmap_->getSizeInCellsX() &&
-            neighbor[1] >= 0 && neighbor[1] < costmap_->getSizeInCellsY() &&
-            costmap_->getCost(neighbor[0], neighbor[1]) < costmap_2d::LETHAL_OBSTACLE) {
-            neighbors.push_back(neighbor);
+        int nx = node[0] + dir.first;  // Nueva coordenada x
+        int ny = node[1] + dir.second; // Nueva coordenada y
+
+        // Verificar que el vecino esté dentro de los límites del mapa
+        if (nx >= 0 && nx < costmap_->getSizeInCellsX() &&
+            ny >= 0 && ny < costmap_->getSizeInCellsY()) {
+            
+            // Verificar que el vecino no sea un obstáculo
+            if (costmap_->getCost(nx, ny) != costmap_2d::LETHAL_OBSTACLE &&
+                obstacleFree(node[0], node[1], nx, ny)) {
+                neighbors.push_back({nx, ny});
+            }
         }
     }
+
     return neighbors;
 }
 
@@ -156,7 +181,9 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
         }
 
         if (current == goal) {
-            ROS_INFO("Goal Reached!");
+            if (verbose){
+                ROS_INFO("Goal Reached!: [%d, %d] - [%d, %d]", current[0], current[1], goal[0], goal[1]);
+            }
             reconstructPath(came_from, current, sol);
             return true;
         }
@@ -172,8 +199,7 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
             double tentative_g_score = g_score[current] + heuristic(current, neighbor);
             if (tentative_g_score < g_score[neighbor]) {
                 if (verbose){
-                    ROS_INFO("Updating Neighbor: [%d, %d]", neighbor[0], neighbor[1]);
-                    ROS_INFO("Tentative g_score: %f", tentative_g_score);
+                    ROS_INFO("Updating Neighbor: [%d, %d]: %f", neighbor[0], neighbor[1], tentative_g_score);
                 }
                 
 
@@ -184,9 +210,7 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
                 open_set.emplace(neighbor, f_score[neighbor]);
 
                 if (verbose){
-                    ROS_INFO("Neighbor Updated: [%d, %d]", neighbor[0], neighbor[1]);
-                    ROS_INFO("g_score: %f", g_score[neighbor]);
-                    ROS_INFO("f_score: %f", f_score[neighbor]);
+                    ROS_INFO("Neighbor Updated: [%d, %d], g_score: %f, f_score: %f", neighbor[0], neighbor[1], g_score[neighbor], f_score[neighbor]);
                 }
             }
         }
