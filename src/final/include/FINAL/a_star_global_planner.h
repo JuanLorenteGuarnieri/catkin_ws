@@ -30,6 +30,12 @@ struct hash_vector {
 };
 
 
+enum class HeuristicType {
+    EUCLIDEAN,
+    MANHATTAN,
+    DIAGONAL,
+};
+
 namespace a_star_planner {
 
 class AStarPlanner : public nav_core::BaseGlobalPlanner {
@@ -68,6 +74,9 @@ private:
     std::vector<std::vector<int>>& sol);
     double heuristic(const std::vector<int>& a, const std::vector<int>& b);
     std::vector<std::vector<int>> getNeighbors(const std::vector<int>& node);
+    void publishExploredNode(const std::vector<int>& node);
+    void publishOptimalPath(const std::vector<std::vector<int>>& path);
+    HeuristicType heuristic_type_ = HeuristicType::MANHATTAN;
 };
 
 };

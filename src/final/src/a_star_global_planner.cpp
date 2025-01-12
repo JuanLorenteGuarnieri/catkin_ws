@@ -18,6 +18,66 @@ AStarPlanner::AStarPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_r
     initialize(name, costmap_ros);
 }
 
+void AStarPlanner::publishExploredNode(const std::vector<int>& node) {
+    static visualization_msgs::Marker explored_nodes_marker;
+    if (explored_nodes_marker.points.empty()) {
+        explored_nodes_marker.header.frame_id = global_frame_id_;
+        explored_nodes_marker.header.stamp = ros::Time::now();
+        explored_nodes_marker.ns = "explored_nodes";
+        explored_nodes_marker.action = visualization_msgs::Marker::ADD;
+        explored_nodes_marker.pose.orientation.w = 1.0;
+        explored_nodes_marker.type = visualization_msgs::Marker::POINTS;
+        explored_nodes_marker.scale.x = resolution_;
+        explored_nodes_marker.scale.y = resolution_;
+        explored_nodes_marker.color.r = 0.0f;
+        explored_nodes_marker.color.g = 0.0f;
+        explored_nodes_marker.color.b = 1.0f;  // Blue
+        explored_nodes_marker.color.a = 0.5f;  // Transparent
+    }
+
+    geometry_msgs::Point p;
+    double wx, wy;
+    costmap_->mapToWorld(node[0], node[1], wx, wy);
+
+    p.x = wx;
+    p.y = wy;
+    p.z = 0.0; 
+
+    explored_nodes_marker.points.push_back(p);
+
+    marker_pub_.publish(explored_nodes_marker);
+}
+
+
+void AStarPlanner::publishOptimalPath(const std::vector<std::vector<int>>& path) {
+    visualization_msgs::Marker path_marker;
+    path_marker.header.frame_id = global_frame_id_;
+    path_marker.header.stamp = ros::Time::now();
+    path_marker.ns = "optimal_path";
+    path_marker.action = visualization_msgs::Marker::ADD;
+    path_marker.pose.orientation.w = 1.0;
+    path_marker.type = visualization_msgs::Marker::LINE_STRIP;
+    path_marker.scale.x =  0.1;  // Line thickness
+    path_marker.color.r = 0.5f;  // Red
+    path_marker.color.g = 0.0f;
+    path_marker.color.b = 0.0f;
+    path_marker.color.a = 1.0f;
+
+    for (const auto& point : path) {
+        geometry_msgs::Point p;
+        double wx, wy;
+        costmap_->mapToWorld(point[0], point[1], wx, wy);
+
+        p.x = wx;
+        p.y = wy;
+        p.z = 0.0;  // Mantener Z en 0 para visualización 2D
+        path_marker.points.push_back(p);
+    }
+
+    marker_pub_.publish(path_marker);
+}
+
+
 void AStarPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros){
 
     if (!initialized_){
@@ -103,8 +163,16 @@ bool AStarPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geome
 }
 
 double AStarPlanner::heuristic(const std::vector<int>& a, const std::vector<int>& b) {
-    double result = distance(a[0], a[1], b[0], b[1]);
-    return result;
+    if (heuristic_type_ == HeuristicType::EUCLIDEAN) {
+        return distance(a[0], a[1], b[0], b[1]);
+    } else if (heuristic_type_ == HeuristicType::MANHATTAN) {
+        return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
+    } else if(heuristic_type_ == HeuristicType::DIAGONAL){
+        return std::max(std::abs(a[0] - b[0]), std::abs(a[1] - b[1]));
+    } else {
+        ROS_WARN("Invalid heuristic type. Using Manhattan distance.");
+        return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
+    }
 }
 
 std::vector<std::vector<int>> AStarPlanner::getNeighbors(const std::vector<int>& node) {
@@ -151,7 +219,7 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
                                std::vector<std::vector<int>>& sol) {
     // Initialize cost maps
     using Node = std::vector<int>;
-    bool verbose = true;
+    bool verbose = false;
 
     auto compare = [](const std::pair<Node, double>& a, const std::pair<Node, double>& b) {
         return a.second > b.second;
@@ -179,12 +247,14 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
         if (verbose){
             ROS_INFO("Current Node: [%d, %d]", current[0], current[1]);
         }
+        publishExploredNode(current); //ESTO SEÑALA LO QUE HACE EL ALGORITMO, OJO QUE SI LO PONES ES MUCHÍSIMO MÁS LENTO
 
         if (current == goal) {
             if (verbose){
                 ROS_INFO("Goal Reached!: [%d, %d] - [%d, %d]", current[0], current[1], goal[0], goal[1]);
             }
             reconstructPath(came_from, current, sol);
+            publishOptimalPath(sol);
             return true;
         }
 
