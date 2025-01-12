@@ -20,6 +20,16 @@ AStarPlanner::AStarPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_r
 
 void AStarPlanner::publishExploredNode(const std::vector<int>& node) {
     static visualization_msgs::Marker explored_nodes_marker;
+    static int counter = 0;
+    
+    if (counter == 10000) {
+        counter = 0;
+        explored_nodes_marker.points.clear();
+    }
+    else{
+        counter++;
+    }
+
     if (explored_nodes_marker.points.empty()) {
         explored_nodes_marker.header.frame_id = global_frame_id_;
         explored_nodes_marker.header.stamp = ros::Time::now();
@@ -58,7 +68,7 @@ void AStarPlanner::publishOptimalPath(const std::vector<std::vector<int>>& path)
     path_marker.pose.orientation.w = 1.0;
     path_marker.type = visualization_msgs::Marker::LINE_STRIP;
     path_marker.scale.x =  0.1;  // Line thickness
-    path_marker.color.r = 0.5f;  // Red
+    path_marker.color.r = 0.1f;  // Red
     path_marker.color.g = 0.0f;
     path_marker.color.b = 0.0f;
     path_marker.color.a = 1.0f;
@@ -167,8 +177,6 @@ double AStarPlanner::heuristic(const std::vector<int>& a, const std::vector<int>
         return distance(a[0], a[1], b[0], b[1]);
     } else if (heuristic_type_ == HeuristicType::MANHATTAN) {
         return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
-    } else if(heuristic_type_ == HeuristicType::DIAGONAL){
-        return std::max(std::abs(a[0] - b[0]), std::abs(a[1] - b[1]));
     } else {
         ROS_WARN("Invalid heuristic type. Using Manhattan distance.");
         return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);

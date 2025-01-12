@@ -33,7 +33,6 @@ struct hash_vector {
 enum class HeuristicType {
     EUCLIDEAN,
     MANHATTAN,
-    DIAGONAL,
 };
 
 namespace a_star_planner {
