@@ -173,15 +173,29 @@ bool AStarPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geome
 }
 
 double AStarPlanner::heuristic(const std::vector<int>& a, const std::vector<int>& b) {
+    double base_heuristic = 0.0;
+
+    // Cálculo de la heurística base
     if (heuristic_type_ == HeuristicType::EUCLIDEAN) {
-        return distance(a[0], a[1], b[0], b[1]);
+        base_heuristic = distance(a[0], a[1], b[0], b[1]);
     } else if (heuristic_type_ == HeuristicType::MANHATTAN) {
-        return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
-    } else {
-        ROS_WARN("Invalid heuristic type. Using Manhattan distance.");
-        return std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
+        base_heuristic = std::abs(a[0] - b[0]) + std::abs(a[1] - b[1]);
     }
+
+    // Obtener el costo de la celda actual
+    double obstacle_cost = costmap_->getCost(a[0], a[1]);
+
+    // Penalizar celdas cercanas a obstáculos inflados
+    if (obstacle_cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+        obstacle_cost *= 10.0;  // Penalización fuerte para áreas infladas
+    } else if (obstacle_cost >= costmap_2d::FREE_SPACE) {
+        obstacle_cost *= 1.5;  // Penalización leve para áreas cercanas
+    }
+
+    // Normalizar el costo del mapa para combinarlo con la heurística base
+    return base_heuristic + obstacle_cost / 255.0;
 }
+
 
 std::vector<std::vector<int>> AStarPlanner::getNeighbors(const std::vector<int>& node) {
     std::vector<std::vector<int>> neighbors;
@@ -255,7 +269,7 @@ bool AStarPlanner::computeAStar(const std::vector<int>& start, const std::vector
         if (verbose){
             ROS_INFO("Current Node: [%d, %d]", current[0], current[1]);
         }
-        publishExploredNode(current); //ESTO SEÑALA LO QUE HACE EL ALGORITMO, OJO QUE SI LO PONES ES MUCHÍSIMO MÁS LENTO
+        //publishExploredNode(current); //ESTO SEÑALA LO QUE HACE EL ALGORITMO, OJO QUE SI LO PONES ES MUCHÍSIMO MÁS LENTO
 
         if (current == goal) {
             if (verbose){
